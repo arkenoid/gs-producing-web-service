@@ -1,8 +1,9 @@
 buildscript {
     repositories {
-        mavenLocal()
-        mavenCentral()
-        maven { url "http://repo.spring.io/libs-release" }
+//        mavenLocal()
+//        mavenCentral()
+//        maven { url "http://repo.spring.io/libs-release" }
+        maven { url "http://localhost:8081/artifactory/remote-repos" }
     }
     dependencies {
         classpath("org.springframework.boot:spring-boot-gradle-plugin:1.1.4.RELEASE")
@@ -14,19 +15,64 @@ apply plugin: 'eclipse'
 apply plugin: 'idea'
 apply plugin: 'spring-boot'
 
+repositories {
+//    mavenLocal()
+//    mavenCentral()
+//    maven { url "http://repo.spring.io/libs-release" }
+    maven { url "http://localhost:8081/artifactory/remote-repos" }
+}
+
+task genJaxb {
+    ext.sourcesDir = "${buildDir}/generated-sources/jaxb"
+    ext.classesDir = "${buildDir}/classes/jaxb"
+    ext.schema = "src/main/resources/countries.xsd"
+
+    outputs.dir classesDir
+
+    doLast() {
+        project.ant {
+            taskdef name: "xjc", classname: "com.sun.tools.xjc.XJCTask",
+                    classpath: configurations.jaxb.asPath
+            mkdir(dir: sourcesDir)
+            mkdir(dir: classesDir)
+
+            xjc(destdir: sourcesDir, schema: schema) {
+                arg(value: "-wsdl")
+                produces(dir: sourcesDir, includes: "**/*.java")
+            }
+
+            javac(destdir: classesDir, source: 1.6, target: 1.6, debug: true,
+                    debugLevel: "lines,vars,source",
+                    classpath: configurations.jaxb.asPath) {
+                src(path: sourcesDir)
+                include(name: "**/*.java")
+                include(name: "*.java")
+            }
+
+            copy(todir: classesDir) {
+                fileset(dir: sourcesDir, erroronmissingdir: false) {
+                    exclude(name: "**/*.java")
+                }
+            }
+        }
+    }
+}
+
+configurations {
+    jaxb
+}
+
 jar {
     baseName = 'gs-producing-web-service'
     version =  '0.1.0'
-}
-
-repositories {
-    mavenLocal()
-    mavenCentral()
-    maven { url "http://repo.spring.io/libs-release" }
+    from genJaxb.classesDir
 }
 
 dependencies {
-    compile("org.springframework.boot:spring-boot-starter-web")
+    compile("org.springframework.boot:spring-boot-starter-ws")
+    compile("wsdl4j:wsdl4j:1.6.1")
+    jaxb("com.sun.xml.bind:jaxb-xjc:2.2.4-1")
+    compile(files(genJaxb.classesDir).builtBy(genJaxb))
 }
 
 task wrapper(type: Wrapper) {
